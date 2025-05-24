@@ -3,10 +3,12 @@
   "version": "0.1.0",
   "description": "",
   "main": "dist/main.js",
+  "type": "module",
   "scripts": {
     "build": "tsc",
-    "test": "jest",
-    "test:small": "jest --testPathIgnorePatterns=tests/pricing-service/"
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "vitest --run"
   },
   "repository": {
     "type": "git",
@@ -26,12 +28,18 @@
     "url": "https://github.com/Alex-GF/space-node-client/issues"
   },
   "homepage": "https://github.com/Alex-GF/space-node-client#readme",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "packageManager": "pnpm@10.9.0",
   "dependencies": {
     "axios": "^1.9.0",
+    "form-data": "^4.0.2",
     "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
     "@faker-js/faker": "^9.7.0",
+    "@types/node": "^22.15.21",
     "@vitest/coverage-v8": "^3.1.2",
     "dotenv": "^16.5.0",
     "husky": "^8.0.3",

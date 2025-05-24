@@ -7,7 +7,7 @@ export function connect(options?: SpaceConnectionOptions): SpaceClient{
     throw new Error("Both 'url' and 'apiKey' are required to connect to Space.");
   }
 
-  if (typeof options.timeout !== 'number' || options.timeout <= 0) {
+  if (options.timeout && (typeof options.timeout !== 'number' || options.timeout <= 0)) {
     throw new Error("Invalid 'timeout' value. It must be a positive number.");
   }
 
