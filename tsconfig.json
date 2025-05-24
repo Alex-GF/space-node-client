@@ -2,7 +2,7 @@
   "compilerOptions": {
     /* Target and Module */
     "target": "ES2022",                      // Keeps ES2022 as the target
-    "lib": ["ES2023"],                       // Modern libraries, keeping ES2023
+    "lib": ["ES2023", "dom"],                       // Modern libraries, keeping ES2023
     "module": "ES2022",                      // Keeps ESNext as the module
     "moduleResolution": "bundler",             // Changed to "node" for better resolution in Node.js environments
 
