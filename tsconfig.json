@@ -1,0 +1,40 @@
+{
+  "compilerOptions": {
+    /* Target and Module */
+    "target": "ES2022",                      // Keeps ES2022 as the target
+    "lib": ["ES2023"],                       // Modern libraries, keeping ES2023
+    "module": "ES2022",                      // Keeps ESNext as the module
+    "moduleResolution": "bundler",             // Changed to "node" for better resolution in Node.js environments
+
+    /* TypeScript Module Interoperability */
+    "esModuleInterop": true,                // Necessary to import CommonJS modules
+    "allowSyntheticDefaultImports": true,   // Complements esModuleInterop
+    "resolveJsonModule": true,              // Allows importing JSON files
+    "isolatedModules": true,                // Requires each file to act as an independent module
+
+    /* Code Emission */
+    "outDir": "./dist",                     // Output in the `dist` folder
+    "rootDir": "./src",                     // Source code in the `src` folder
+    "noEmitOnError": true,                  // Prevents emission in case of errors
+    "declaration": true,                    // Generates `.d.ts` definition files
+
+    /* Strict Mode */
+    "strict": true,                         // Enables all strict checking options
+    "noUnusedLocals": false,                 // Detects unused local variables
+    "noUnusedParameters": false,             // Detects unused parameters
+    "noImplicitReturns": false,              // Requires handling all return paths
+    "noFallthroughCasesInSwitch": false,     // Prevents unintended fallthrough in `switch`
+
+    /* Linting and Debugging */
+    "skipLibCheck": true,                   // Skips checks on external dependencies
+    "sourceMap": true,                      // Generates source maps for debugging
+
+    /* Compatibility */
+    "forceConsistentCasingInFileNames": true, // Ensures consistent file name casing
+
+    /* Module Detection */
+    "moduleDetection": "force",              // Forces proper module detection
+  },
+  "include": ["src"],               // Included files
+  "exclude": ["node_modules", "dist"]        // Excludes dependencies and output
+}

@@ -1,0 +1,43 @@
+{
+  "name": "space-client",
+  "version": "0.1.0",
+  "description": "",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "test:small": "jest --testPathIgnorePatterns=tests/pricing-service/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Alex-GF/space-node-client.git"
+  },
+  "keywords": [
+    "space",
+    "Pricing",
+    "nodejs",
+    "typescript",
+    "pricing",
+    "pricing-driven self-adaptation"
+  ],
+  "author": "ISA-Group",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Alex-GF/space-node-client/issues"
+  },
+  "homepage": "https://github.com/Alex-GF/space-node-client#readme",
+  "dependencies": {
+    "socket.io-client": "^4.8.1"
+  },
+  "devDependencies": {
+    "@faker-js/faker": "^9.7.0",
+    "@vitest/coverage-v8": "^3.1.2",
+    "dotenv": "^16.5.0",
+    "husky": "^8.0.3",
+    "prettier": "^3.0.3",
+    "tsx": "^4.19.3",
+    "typescript": "^5.3.3",
+    "typescript-eslint": "^8.31.0",
+    "vitest": "^3.1.2"
+  }
+}
