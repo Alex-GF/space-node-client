@@ -1,16 +1,14 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { connect, SpaceClient } from '../main/index';
-
-const SPACE_URL = 'http://localhost:5403';
-const API_KEY = 'invalid-api-key';
+import { TEST_API_KEY, TEST_SPACE_URL } from './utils/setup';
 
 describe('SpaceClient Connection Test Suite', () => {
   let client: SpaceClient;
 
   beforeAll(() => {
     client = connect({
-      url: SPACE_URL,
-      apiKey: API_KEY,
+      url: TEST_SPACE_URL,
+      apiKey: TEST_API_KEY,
     })
   });
 

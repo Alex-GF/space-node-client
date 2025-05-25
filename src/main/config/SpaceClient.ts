@@ -1,6 +1,8 @@
 import axios from 'axios';
 import { io, Socket } from 'socket.io-client';
 import { ServiceModule } from '../api/ServiceModule';
+import { ContractModule } from '../api/ContractModule';
+import { FeatureModule } from '../api/FeaturesModule';
 
 /**
  * The `SpaceClient` class provides an interface to interact with the Space API and WebSocket services.
@@ -33,7 +35,7 @@ export class SpaceClient {
    * The timeout duration (in milliseconds) for HTTP requests.
    * Defaults to 5000ms if not provided in the constructor options.
    */
-  private timeout: number;
+  public timeout: number;
 
   /**
    * A record of callback functions registered for specific events.
@@ -45,6 +47,16 @@ export class SpaceClient {
    * An instance of the `ServiceModule` class, which provides additional service-related functionality.
    */
   public services: ServiceModule;
+
+  /**
+   * An instance of the `ContractModule` class, which provides functionality for managing contracts.
+   */
+  public contracts: ContractModule;
+
+  /**
+   * An instance of the `FeatureModule` class, which provides functionality for evaluating features.
+   */
+  public features: FeatureModule;
 
   /**
    * Constructs a new instance of the `SpaceClient` class.
@@ -65,8 +77,11 @@ export class SpaceClient {
     this.timeout = options.timeout || 5000; // Default timeout to 5000ms if not provided
 
     this.services = new ServiceModule(this);
+    this.contracts = new ContractModule(this);
+    this.features = new FeatureModule(this);
 
     this.configureSocket();
+    this.pricingSocketNamespace.connect();
   }
 
   /**
