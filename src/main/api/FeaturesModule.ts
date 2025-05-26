@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { SpaceClient } from '../config/SpaceClient';
+import {FeatureEvaluationResult } from '../types';
 
 export class FeatureModule {
   private spaceClient: SpaceClient;
@@ -25,10 +26,11 @@ export class FeatureModule {
   public async evaluate(
     userId: string,
     featureId: string,
-    expectedConsumption: Record<string, number> = {}
-  ) {
-    axios
-      .post(`${this.spaceClient.httpUrl}/features/${userId}/${featureId}`, expectedConsumption, {
+    expectedConsumption: Record<string, number> = {},
+    options: {details?: boolean} = {}
+  ): Promise<FeatureEvaluationResult> {
+    return await axios
+      .post(`${this.spaceClient.httpUrl}/features/${userId}/${featureId}${options.details ? "?details=true" : ""}`, expectedConsumption, {
         headers: {
           'x-api-key': this.spaceClient.apiKey,
         },
