@@ -44,4 +44,31 @@ export class FeatureModule {
         throw error;
       });
   }
+
+  /**
+   * Generates a pricing token for a user by sending a request to the Space API.
+   * This token can be used to retrieve pricing information for the user or to 
+   * activate/deactivate UI components without providing access to the SPACE API from 
+   * the internet.
+   * 
+   * @param userId - The ID of the user for whom the pricing token is being generated.
+   * @returns A promise that resolves with the generated pricing token.
+   * @throws An error if the operation fails.
+   */
+  public async generateUserPricingToken(userId: string): Promise<string> {
+    return await axios
+      .post(`${this.spaceClient.httpUrl}/features/${userId}/pricing-token`, {}, {
+        headers: {
+          'x-api-key': this.spaceClient.apiKey,
+        },
+        timeout: this.spaceClient.timeout,
+      })
+      .then(response => {
+        return response.data.pricingToken;
+      })
+      .catch(error => {
+        console.error('Error generating user pricing token:', error);
+        throw error;
+      });
+  }
 }

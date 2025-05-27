@@ -77,4 +77,21 @@ describe('Features Module Test Suite', () => {
     expect(response.used).toBeDefined();
     expect(response.used!['tomatometer-maxPomodoroTimers']).toBe(1);
   });
+
+  it('Should create pricingToken', async () => {
+    const token = await client.features.generateUserPricingToken(testContract.userContact.userId);
+
+    expect(token).toBeDefined();
+    expect(typeof token).toBe('string');
+    const parts = token.split('.');
+    expect(parts.length).toBe(3);
+
+    const header = JSON.parse(Buffer.from(parts[0], 'base64').toString('utf-8'));
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf-8'));
+
+    expect(header).toBeDefined();
+    expect(payload).toBeDefined();
+    expect(header.alg).toBe('HS256'); // or the expected algorithm
+    expect(payload.sub).toBe(testContract.userContact.userId);
+  });
 });
