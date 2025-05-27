@@ -1,5 +1,5 @@
 {
-  "name": "space-client",
+  "name": "space-node-client",
   "version": "0.1.0",
   "description": "",
   "main": "dist/main.js",
