@@ -15,6 +15,32 @@ export class ContractModule {
   }
 
   /**
+   * Retrieves the contract for a specific user from the Space platform.
+   * 
+   * @param userId - The ID of the user whose contract is to be retrieved.
+   * Retrieves the contract for a specific user from the Space platform.
+   * This contract contains information about the user's subscription, billing period, and usage levels.
+   * @returns A promise that resolves with the user's contract data.
+   * @throws An error if the operation fails.
+   */
+  public async getContract(userId: string): Promise<Contract> {
+    return axios
+      .get(`${this.spaceClient.httpUrl}/contracts/${userId}`, {
+        headers: {
+          'x-api-key': this.spaceClient.apiKey,
+        },
+        timeout: this.spaceClient.timeout,
+      })
+      .then(response => {
+        return response.data;
+      })
+      .catch(error => {
+        console.error('Error fetching contract:', error.response.data);
+        throw error;
+      });
+  }
+
+  /**
    * Adds a new contract to the Space platform, so that evaluations for the user who owns the contract can be performed.
    *
    * @param contractToCreate - The contract details to be created.
@@ -33,7 +59,7 @@ export class ContractModule {
         return response.data;
       })
       .catch(error => {
-        console.error('Error adding contract:', error.response.data.error);
+        console.error('Error adding contract:', error.response.data);
         throw error;
       });
   }
@@ -61,7 +87,7 @@ export class ContractModule {
         return response.data;
       })
       .catch(error => {
-        console.error('Error updating contract subscription:', error);
+        console.error('Error updating contract subscription:', error.response.data);
         throw error;
       });
   }

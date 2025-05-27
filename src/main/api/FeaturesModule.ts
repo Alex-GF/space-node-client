@@ -40,7 +40,7 @@ export class FeatureModule {
         return response.data;
       })
       .catch(error => {
-        console.error('Error evaluating feature:', error);
+        console.error('Error evaluating feature:', error.response.data);
         throw error;
       });
   }
@@ -67,7 +67,7 @@ export class FeatureModule {
         return response.data.pricingToken;
       })
       .catch(error => {
-        console.error('Error generating user pricing token:', error);
+        console.error('Error generating user pricing token:', error.response.data);
         throw error;
       });
   }

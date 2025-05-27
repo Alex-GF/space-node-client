@@ -205,7 +205,7 @@ export class ServiceModule {
         return response.data;
       })
       .catch(error => {
-        console.error('Error archiving pricing:', error);
+        console.error('Error archiving pricing:', error.response.data);
         throw error;
       });
   }
