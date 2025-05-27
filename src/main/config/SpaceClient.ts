@@ -3,6 +3,7 @@ import { io, Socket } from 'socket.io-client';
 import { ServiceModule } from '../api/ServiceModule';
 import { ContractModule } from '../api/ContractModule';
 import { FeatureModule } from '../api/FeaturesModule';
+import { SpaceEvent } from '../types';
 
 /**
  * The `SpaceClient` class provides an interface to interact with the Space API and WebSocket services.
@@ -36,6 +37,15 @@ export class SpaceClient {
    * Defaults to 5000ms if not provided in the constructor options.
    */
   public timeout: number;
+
+  private validEvents: string[] = [
+      'synchronized',
+      'pricing_created',
+      'pricing_archived',
+      'pricing_actived',
+      'service_disabled',
+      'error',
+    ];
 
   /**
    * A record of callback functions registered for specific events.
@@ -105,19 +115,24 @@ export class SpaceClient {
    * @param callback - The function to execute when the event is triggered.
    */
   public on(event: string, callback: (data?: any) => void): void {
-    switch (event.toLowerCase()) {
-      case 'synchronized':
-        this.callBackFunctions['synchronized'] = callback;
-        break;
-      case 'pricing_change':
-        this.callBackFunctions['pricing_change'] = callback;
-        break;
-      case 'error':
-        this.callBackFunctions['error'] = callback;
-        break;
-      default:
-        console.warn(`No handler for event: ${event}`);
-        return;
+    if (this.validEvents.includes(event.toLowerCase())) {
+      this.callBackFunctions[event.toLowerCase()] = callback;
+    } else {
+      console.warn(`No handler for event: ${event}`);
+    }
+  }
+
+  public removeListener(event: string): void {
+    if (this.validEvents.includes(event.toLowerCase())) {
+      delete this.callBackFunctions[event.toLowerCase()];
+    } else {
+      console.warn(`No handler to remove for event: ${event}`);
+    }
+  }
+
+  public removeAllListeners(): void {
+    for (const event of this.validEvents) {
+      delete this.callBackFunctions[event];
     }
   }
 
@@ -160,16 +175,11 @@ export class SpaceClient {
     });
 
     this.pricingSocketNamespace.on('message', data => {
-      switch (data.code.toLowerCase()) {
-        case 'pricing_change':
-          if (!this.callBackFunctions['pricing_change']) {
-            console.warn("No callback function registered for 'pricing_change' event");
-            return;
-          }
-          this.callBackFunctions['pricing_change'](data.details);
-          break;
-        default:
-          console.warn(`Unhandled message code: ${data.code}`);
+      const event = (data.code as SpaceEvent).toLowerCase();
+      const callback = this.callBackFunctions[event];
+
+      if (callback) {
+        callback(data.details);
       }
     });
 

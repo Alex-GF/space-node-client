@@ -27,12 +27,14 @@ describe('SpaceClient Connection Test Suite', () => {
   });
 
   it('Should connect to the SpaceClient instance', async () => {
-    await new Promise((resolve, reject) => {
+    const response = await new Promise((resolve, reject) => {
       // @ts-ignore
       client.on('synchronized', () => {
         resolve(true);
       });
       setTimeout(() => reject(new Error('Connection timeout')), 5000);
     });
+
+    expect(response).toBeTruthy();
   });
 });

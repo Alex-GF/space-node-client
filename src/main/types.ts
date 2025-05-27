@@ -92,3 +92,5 @@ export interface FeatureEvaluationResult {
     message: string;
   } | null;
 }
+
+export type SpaceEvent = "PRICING_CREATED" | "PRICING_ARCHIVED" | "PRICING_ACTIVED" | "SERVICE_DISABLED";
