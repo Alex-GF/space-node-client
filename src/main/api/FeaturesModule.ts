@@ -27,10 +27,21 @@ export class FeatureModule {
     userId: string,
     featureId: string,
     expectedConsumption: Record<string, number> = {},
-    options: {details?: boolean} = {}
+    options: {details?: boolean, server?: boolean} = {}
   ): Promise<FeatureEvaluationResult> {
+
+    const queryParams = [];
+    if (options.details) {
+      queryParams.push("details=true");
+    }
+    if (options.server) {
+      queryParams.push("server=true");
+    }
+
+    const queryString = queryParams.length > 0 ? `?${queryParams.join("&")}` : "";
+
     return await axios
-      .post(`${this.spaceClient.httpUrl}/features/${userId}/${featureId}${options.details ? "?details=true" : ""}`, expectedConsumption, {
+      .post(`${this.spaceClient.httpUrl}/features/${userId}/${featureId}${queryString}`, expectedConsumption, {
         headers: {
           'x-api-key': this.spaceClient.apiKey,
         },
