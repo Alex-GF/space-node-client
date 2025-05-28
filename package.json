@@ -1,6 +1,6 @@
 {
   "name": "space-node-client",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "",
   "main": "./dist/main/index.js",
   "module": "./dist/main/index.js",
@@ -10,6 +10,7 @@
     "import": "./dist/main/index.js",
     "require": "./dist/main/index.js"
   },
+  "files": ["dist", "README.md", "LICENSE"],
   "scripts": {
     "build": "tsc && tsc-alias --project=\"./tsconfig.json\" --resolve-full-paths",
     "dev": "tsc --watch & tsc-alias --watch --project=\"./tsconfig.json\" --resolve-full-paths",
