@@ -1,14 +1,17 @@
 {
   "name": "space-node-client",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "",
   "main": "./dist/main/index.js",
   "module": "./dist/main/index.js",
-  "types": "dist/main/types.d.ts",
+  "types": "./dist/main/types.d.ts",
   "type": "module",
   "exports": {
-    "import": "./dist/main/index.js",
-    "require": "./dist/main/index.js"
+    ".": {
+      "import": "./dist/main/index.js",
+      "require": "./dist/main/index.js",
+      "types": "./dist/main/types.d.ts"
+    }
   },
   "files": ["dist", "README.md", "LICENSE"],
   "scripts": {
