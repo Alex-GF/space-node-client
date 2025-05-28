@@ -11,7 +11,7 @@
     "require": "./dist/main/index.js"
   },
   "scripts": {
-    "build": "tsc && tsc-alias && add-import-extension dist --ext .js",
+    "build": "tsc && tsc-alias --project=\"./tsconfig.json\" --resolve-full-paths",
     "dev": "tsc --watch & tsc-alias --watch --project=\"./tsconfig.json\" --resolve-full-paths",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
