@@ -57,6 +57,32 @@ export class FeatureModule {
   }
 
   /**
+   * Reverts the optimistic usage level update performed during a previous evaluation with SPACE.
+   * This method is expected to be used when the transaction of the request has failed in the aplication, and therefore no usage should be charged to the user.
+   * @param userId - The ID of the user for whom the feature is being evaluated.
+   * @param featureId - The ID of the feature to be evaluated (i.e. \`${serviceName}-${featureName}\`).
+   * @param revertToLatest - A boolean indicating whether to reset to the latest stored value in the optimistic cache (`true => newest` | `false => oldest`).
+   * @returns A promise that resolves to `true` if the revert operation was successful, otherwise it throws an error.
+   * @throws An error if the operation fails.
+   */
+  public async revertEvaluation(userId: string, featureId: string, revertToLatest: boolean = true): Promise<boolean> {
+    return await axios
+      .post(`${this.spaceClient.httpUrl}/features/${userId}?revert=true&latest=${revertToLatest}`, {}, {
+        headers: {
+          'x-api-key': this.spaceClient.apiKey,
+        },
+        timeout: this.spaceClient.timeout,
+      })
+      .then(() => {
+        return true;
+      })
+      .catch(error => {
+        console.error(`Error reverting usage level for evaluation of feature ${featureId} for user ${userId}:`, error.response.data);
+        throw error;
+      });
+  }
+
+  /**
    * Generates a pricing token for a user by sending a request to the Space API.
    * This token can be used to retrieve pricing information for the user or to 
    * activate/deactivate UI components without providing access to the SPACE API from 

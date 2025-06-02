@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';
 import { connect, SpaceClient } from '../main/index';
-import { TEST_API_KEY, TEST_SPACE_URL } from './utils/setup';
+import { TEST_API_KEY, TEST_SPACE_URL } from './lib/axios';
 
 describe('SpaceClient Connection Test Suite', () => {
   let client: SpaceClient;
