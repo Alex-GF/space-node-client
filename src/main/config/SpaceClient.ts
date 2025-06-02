@@ -1,6 +1,5 @@
 import axios from 'axios';
 import { io, Socket } from 'socket.io-client';
-import { ServiceModule } from '../api/ServiceModule';
 import { ContractModule } from '../api/ContractModule';
 import { FeatureModule } from '../api/FeaturesModule';
 import { SpaceEvent } from '../types';
@@ -54,11 +53,6 @@ export class SpaceClient {
   private callBackFunctions: Record<string, (data?: any) => void> = {};
 
   /**
-   * An instance of the `ServiceModule` class, which provides additional service-related functionality.
-   */
-  public services: ServiceModule;
-
-  /**
    * An instance of the `ContractModule` class, which provides functionality for managing contracts.
    */
   public contracts: ContractModule;
@@ -85,8 +79,6 @@ export class SpaceClient {
     this.pricingSocketNamespace = this.socketClient.io.socket('/pricings');
     this.apiKey = options.apiKey;
     this.timeout = options.timeout || 5000; // Default timeout to 5000ms if not provided
-
-    this.services = new ServiceModule(this);
     this.contracts = new ContractModule(this);
     this.features = new FeatureModule(this);
 

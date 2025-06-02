@@ -1,7 +1,6 @@
 import { connect, SpaceClient } from '../../main';
-
-export const TEST_SPACE_URL = 'http://localhost:3000';
-export const TEST_API_KEY = '9cedd24632167a021667df44a26362dfb778c1566c3d4564e132cb58770d8c67';
+import { addService } from './services/helpers';
+import { TEST_API_KEY, TEST_SPACE_URL } from '../lib/axios';
 
 export async function setUpTestEnvironment(): Promise<SpaceClient> {
   return await new Promise((resolve, reject) => {
@@ -10,17 +9,14 @@ export async function setUpTestEnvironment(): Promise<SpaceClient> {
       apiKey: TEST_API_KEY,
     });
 
-    spaceClient.on('synchronized', () => {
+    spaceClient.on('synchronized', async () => {
       console.log('SpaceClient is synchronized and ready for tests.');
-      // The service creation must be failing, since I get a 400 error during contract creation"
-      spaceClient.services
-        .addService('./src/test/resources/pricings/TomatoMeter.yml')
-        .then((response) => {
-          console.log('Service added successfully.');
+      
+      addService('./src/test/resources/pricings/TomatoMeter.yml')
+        .then(() => {
           resolve(spaceClient);
         })
-        .catch(_ => {
-          console.error('The service is already created in space');
+        .catch((error) => {
           resolve(spaceClient);
         });
     });

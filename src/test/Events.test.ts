@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { connect, SpaceClient } from '../main/index';
-import { TEST_API_KEY, TEST_SPACE_URL } from './utils/setup';
 import { generatePricingFile } from './utils/pricings/generators';
 import { v4 as uuidv4 } from 'uuid';
+import { addService } from './utils/services/helpers';
+import { addPricing, changePricingAvailability, getPricing } from './utils/pricings/helpers';
+import { TEST_API_KEY, TEST_SPACE_URL } from './lib/axios';
 
 describe('Features Module Test Suite', () => {
   let client: SpaceClient;
@@ -44,7 +46,7 @@ describe('Features Module Test Suite', () => {
 
       // Create a new pricing to trigger the event
       try {
-        await client.services.addService(
+        await addService(
           await generatePricingFile(testServiceName, testPricingVersion)
         );
       } catch (error) {
@@ -77,20 +79,20 @@ describe('Features Module Test Suite', () => {
 
       // Create a new pricing to trigger the event
       try {
-        await client.services.addService(
+        await addService(
           await generatePricingFile(testServiceName, testPricingVersionToArchive)
         );
-        await client.services.addPricing(
+        await addPricing(
           testServiceName,
           await generatePricingFile(testServiceName, testActivePricingVersion)
         );
-        const pricing = await client.services.getPricing(testServiceName, testActivePricingVersion);
-        await client.services.changePricingAvailability(
+        const pricing = await getPricing(testServiceName, testActivePricingVersion);
+        await changePricingAvailability(
           testServiceName,
           testPricingVersionToArchive,
           'archived',
           {
-            subscriptionPlan: Object.keys(pricing.plans)[0],
+            subscriptionPlan: Object.keys(pricing.plans!)[0],
             subscriptionAddOns: {},
           }
         );
@@ -118,24 +120,24 @@ describe('Features Module Test Suite', () => {
 
       // Create a new pricing to trigger the event
       try {
-        await client.services.addService(
+        await addService(
           await generatePricingFile(testServiceName, testPricingVersionToArchive)
         );
-        await client.services.addPricing(
+        await addPricing(
           testServiceName,
           await generatePricingFile(testServiceName, testActivePricingVersion)
         );
-        const pricing = await client.services.getPricing(testServiceName, testActivePricingVersion);
-        await client.services.changePricingAvailability(
+        const pricing = await getPricing(testServiceName, testActivePricingVersion);
+        await changePricingAvailability(
           testServiceName,
           testPricingVersionToArchive,
           'archived',
           {
-            subscriptionPlan: Object.keys(pricing.plans)[0],
+            subscriptionPlan: Object.keys(pricing.plans!)[0],
             subscriptionAddOns: {},
           }
         );
-        await client.services.changePricingAvailability(
+        await changePricingAvailability(
           testServiceName,
           testPricingVersionToArchive,
           'active'
