@@ -73,6 +73,8 @@ export class FeatureModule {
           await cache.delete(cacheKey);
           // Also invalidate contract cache as usage might have changed
           await cache.delete(cache.getContractKey(userId));
+          // Invalidate pricing token as user's consumption has changed
+          await cache.delete(cache.getPricingTokenKey(userId));
         }
 
         return result;
@@ -109,6 +111,8 @@ export class FeatureModule {
         if (cache.isEnabled()) {
           await cache.delete(cache.getFeatureKey(userId, featureId));
           await cache.delete(cache.getContractKey(userId));
+          // Invalidate pricing token as user's consumption has changed
+          await cache.delete(cache.getPricingTokenKey(userId));
         }
         
         return true;
@@ -123,13 +127,24 @@ export class FeatureModule {
    * Generates a pricing token for a user by sending a request to the Space API.
    * This token can be used to retrieve pricing information for the user or to 
    * activate/deactivate UI components without providing access to the SPACE API from 
-   * the internet.
+   * the internet. The token is cached to improve performance.
    * 
    * @param userId - The ID of the user for whom the pricing token is being generated.
    * @returns A promise that resolves with the generated pricing token.
    * @throws An error if the operation fails.
    */
   public async generateUserPricingToken(userId: string): Promise<string> {
+    const cache = this.spaceClient.getCache();
+    const cacheKey = cache.getPricingTokenKey(userId);
+
+    // Try to get from cache first
+    if (cache.isEnabled()) {
+      const cachedToken = await cache.get<string>(cacheKey);
+      if (cachedToken) {
+        return cachedToken;
+      }
+    }
+
     return await axios
       .post(`${this.spaceClient.httpUrl}/features/${userId}/pricing-token`, {}, {
         headers: {
@@ -137,8 +152,16 @@ export class FeatureModule {
         },
         timeout: this.spaceClient.timeout,
       })
-      .then(response => {
-        return response.data.pricingToken;
+      .then(async response => {
+        const token = response.data.pricingToken;
+        
+        // Cache the token if caching is enabled (with longer TTL as tokens are more stable)
+        if (cache.isEnabled()) {
+          // Use longer TTL for pricing tokens (15 minutes)
+          await cache.set(cacheKey, token, 900);
+        }
+        
+        return token;
       })
       .catch(error => {
         try{

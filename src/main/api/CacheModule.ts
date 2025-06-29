@@ -169,6 +169,13 @@ export class CacheModule {
   }
 
   /**
+   * Generate a cache key for pricing tokens
+   */
+  getPricingTokenKey(userId: string): string {
+    return `pricing-token:${userId}`;
+  }
+
+  /**
    * Invalidate all cache entries for a specific user
    */
   async invalidateUser(userId: string): Promise<void> {
@@ -180,7 +187,8 @@ export class CacheModule {
       const patterns = [
         `contract:${userId}`,
         `feature:${userId}:*`,
-        `subscription:${userId}`
+        `subscription:${userId}`,
+        `pricing-token:${userId}`
       ];
 
       for (const pattern of patterns) {

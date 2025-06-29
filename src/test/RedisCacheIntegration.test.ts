@@ -297,6 +297,86 @@ describe('Redis Cache Integration Tests', () => {
       expect(await cache.has(cache.getFeatureKey(userId, 'feature2'))).toBe(false);
       expect(await cache.has(cache.getSubscriptionKey(userId))).toBe(false);
     });
+
+  it('should cache pricing tokens with Redis', async () => {
+    const testClient = new SpaceClient({
+      url: TEST_SPACE_URL,
+      apiKey: TEST_API_KEY,
+      cache: {
+        enabled: true,
+        type: 'redis' as any,
+        external: {
+          redis: {
+            host: process.env.REDIS_HOST || 'localhost',
+            port: parseInt(process.env.REDIS_PORT || '6379'),
+            keyPrefix: 'test-space-client:'
+          }
+        }
+      }
+    });
+
+    await testClient.connect();
+    const cache = testClient.getCache();
+
+    // Test caching pricing tokens
+    const userId = 'test-pricing-user';
+    const tokenKey = cache.getPricingTokenKey(userId);
+    const testToken = 'test.pricing.token';
+
+    // Set a pricing token
+    await cache.set(tokenKey, testToken, 900);
+
+    // Verify it's cached
+    const cachedToken = await cache.get<string>(tokenKey);
+    expect(cachedToken).toBe(testToken);
+
+    // Clean up
+    await cache.delete(tokenKey);
+    await testClient.disconnect();
+  });
+
+  it('should invalidate pricing tokens when user cache is cleared in Redis', async () => {
+    const testClient = new SpaceClient({
+      url: TEST_SPACE_URL,
+      apiKey: TEST_API_KEY,
+      cache: {
+        enabled: true,
+        type: 'redis' as any,
+        external: {
+          redis: {
+            host: process.env.REDIS_HOST || 'localhost',
+            port: parseInt(process.env.REDIS_PORT || '6379'),
+            keyPrefix: 'test-space-client:'
+          }
+        }
+      }
+    });
+
+    await testClient.connect();
+    const cache = testClient.getCache();
+
+    const userId = 'test-pricing-user-2';
+
+    // Set various cache entries including pricing token
+    await cache.set(cache.getContractKey(userId), { userId: userId });
+    await cache.set(cache.getFeatureKey(userId, 'feature1'), { result: 'success' });
+    await cache.set(cache.getPricingTokenKey(userId), 'test.token.123');
+
+    // Verify all are cached
+    expect(await cache.get(cache.getContractKey(userId))).toBeDefined();
+    expect(await cache.get(cache.getFeatureKey(userId, 'feature1'))).toBeDefined();
+    expect(await cache.get(cache.getPricingTokenKey(userId))).toBeDefined();
+
+    // Invalidate user cache
+    await cache.invalidateUser(userId);
+
+    // Verify all are cleared including pricing token
+    expect(await cache.get(cache.getContractKey(userId))).toBeNull();
+    expect(await cache.get(cache.getFeatureKey(userId, 'feature1'))).toBeNull();
+    expect(await cache.get(cache.getPricingTokenKey(userId))).toBeNull();
+
+    await testClient.disconnect();
+  });
   });
 
   describe('Redis Error Handling', () => {

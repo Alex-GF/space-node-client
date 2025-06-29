@@ -61,6 +61,35 @@ const client = new SpaceClient({
 - **Write operations** (with expectedConsumption): Not cached, invalidates related cache entries
 - `revertEvaluation()`: Invalidates related cache entries
 
+## Pricing Token Caching
+
+Pricing tokens are now cached to improve performance when generating tokens for the same user. The cache behavior follows these rules:
+
+### Caching Behavior
+
+- **TTL**: 15 minutes (900 seconds) - longer than other cache entries as tokens are more stable
+- **Invalidation**: Pricing tokens are automatically invalidated when:
+  - User contract is updated
+  - Feature evaluation with `expectedConsumption` is performed
+  - Evaluation is reverted
+
+### Usage Example
+
+```typescript
+// First call - hits the API and caches the token
+const token1 = await client.features.generateUserPricingToken('user123');
+
+// Second call - returns the cached token (within 15 minutes)
+const token2 = await client.features.generateUserPricingToken('user123');
+// token1 === token2
+
+// After evaluation with consumption, token cache is invalidated
+await client.features.evaluate('user123', 'feature-id', { 'usage': 1 });
+
+// Next call - hits the API again as cache was invalidated
+const token3 = await client.features.generateUserPricingToken('user123');
+```
+
 ## Configuration Options
 
 ### CacheOptions
