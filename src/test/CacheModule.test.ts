@@ -40,6 +40,7 @@ describe('Cache Module Test Suite', () => {
       expect(cache.getContractKey('user123')).toBe('contract:user123');
       expect(cache.getFeatureKey('user123', 'feature-name')).toBe('feature:user123:feature-name');
       expect(cache.getSubscriptionKey('user123')).toBe('subscription:user123');
+      expect(client.getCache().getPricingTokenKey('user123')).toBe('pricing-token:user123');
     });
 
     it('Should cache and retrieve values correctly', async () => {
@@ -130,6 +131,48 @@ describe('Cache Module Test Suite', () => {
       expect(await cache.has('key1')).toBe(false);
       expect(await cache.has('key2')).toBe(false);
       expect(await cache.has('key3')).toBe(false);
+    });
+
+    it('Should cache pricing tokens correctly', async () => {
+      const cache = client.getCache();
+      const key = cache.getPricingTokenKey('user123');
+      
+      // Set a pricing token
+      await cache.set(key, 'token123', 900);
+      
+      // Verify it's cached
+      const cachedToken = await cache.get<string>(key);
+      expect(cachedToken).toBe('token123');
+      
+      // Verify it has the correct TTL (should be around 900 seconds)
+      const provider = (cache as any).provider;
+      if (provider.data && provider.data.has) {
+        const entry = provider.data.get(`space-client:${key}`);
+        expect(entry).toBeDefined();
+        expect(entry.ttl).toBeGreaterThan(800); // Should be close to 900
+      }
+    });
+
+    it('Should invalidate pricing tokens when user cache is cleared', async () => {
+      const cache = client.getCache();
+      
+      // Set various cache entries for user123
+      await cache.set(cache.getContractKey('user123'), { userId: 'user123' });
+      await cache.set(cache.getFeatureKey('user123', 'feature1'), { result: 'success' });
+      await cache.set(cache.getPricingTokenKey('user123'), 'token123');
+      
+      // Verify all are cached
+      expect(await cache.get(cache.getContractKey('user123'))).toBeDefined();
+      expect(await cache.get(cache.getFeatureKey('user123', 'feature1'))).toBeDefined();
+      expect(await cache.get(cache.getPricingTokenKey('user123'))).toBeDefined();
+      
+      // Invalidate user cache
+      await cache.invalidateUser('user123');
+      
+      // Verify all are cleared including pricing token
+      expect(await cache.get(cache.getContractKey('user123'))).toBeNull();
+      expect(await cache.get(cache.getFeatureKey('user123', 'feature1'))).toBeNull();
+      expect(await cache.get(cache.getPricingTokenKey('user123'))).toBeNull();
     });
   });
 
