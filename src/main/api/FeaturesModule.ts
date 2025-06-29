@@ -104,8 +104,11 @@ export class FeatureModule {
         return response.data.pricingToken;
       })
       .catch(error => {
-        console.error('Error generating user pricing token:', error.response.data);
-        throw error;
+        try{
+          console.error('Error generating user pricing token:', error.response.error);
+        }finally {
+          throw error;
+        }
       });
   }
 }

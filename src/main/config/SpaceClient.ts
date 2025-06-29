@@ -75,6 +75,7 @@ export class SpaceClient {
     this.socketClient = io(options.url.replace(/^http/, 'ws'), {
       path: '/events',
       autoConnect: false,
+      transports: ['websocket'],
     });
     this.pricingSocketNamespace = this.socketClient.io.socket('/pricings');
     this.apiKey = options.apiKey;
