@@ -4,6 +4,21 @@ import path from "path";
 import FormData from "form-data";
 import { Service } from "../../types/service";
 
+export async function getService(serviceName: string): Promise<Service | null> {
+  try {
+    const response = await axios.get(`/services/${serviceName}`, {
+      timeout: 5000,
+    });
+    return response.data;
+  } catch (error: any) {
+    if (error.response && error.response.status === 404) {
+      return null; // Service not found
+    }
+    console.error('Error fetching service:', error.message);
+    throw new Error(`Failed to get service: ${error.message}`);
+  }
+}
+
 export async function addService(filePath: string): Promise<Service>{
   const form = new FormData();
   const resolvedPath = path.resolve(process.cwd(), filePath);
