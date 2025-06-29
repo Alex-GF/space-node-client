@@ -16,14 +16,25 @@ export class ContractModule {
 
   /**
    * Retrieves the contract for a specific user from the Space platform.
+   * This method first checks the cache before making an API request.
    * 
    * @param userId - The ID of the user whose contract is to be retrieved.
-   * Retrieves the contract for a specific user from the Space platform.
-   * This contract contains information about the user's subscription, billing period, and usage levels.
    * @returns A promise that resolves with the user's contract data.
    * @throws An error if the operation fails.
    */
   public async getContract(userId: string): Promise<Contract> {
+    const cache = this.spaceClient.getCache();
+    const cacheKey = cache.getContractKey(userId);
+
+    // Try to get from cache first
+    if (cache.isEnabled()) {
+      const cachedContract = await cache.get<Contract>(cacheKey);
+      if (cachedContract) {
+        return cachedContract;
+      }
+    }
+
+    // If not in cache, fetch from API
     return axios
       .get(`${this.spaceClient.httpUrl}/contracts/${userId}`, {
         headers: {
@@ -31,8 +42,15 @@ export class ContractModule {
         },
         timeout: this.spaceClient.timeout,
       })
-      .then(response => {
-        return response.data;
+      .then(async response => {
+        const contract = response.data;
+        
+        // Cache the result if caching is enabled
+        if (cache.isEnabled()) {
+          await cache.set(cacheKey, contract);
+        }
+        
+        return contract;
       })
       .catch(error => {
         console.error('Error fetching contract:', error.response.data);
@@ -42,6 +60,7 @@ export class ContractModule {
 
   /**
    * Adds a new contract to the Space platform, so that evaluations for the user who owns the contract can be performed.
+   * This method also invalidates any cached data for the user.
    *
    * @param contractToCreate - The contract details to be created.
    * @returns A promise that resolves with the response data from the Space API.
@@ -55,8 +74,18 @@ export class ContractModule {
         },
         timeout: this.spaceClient.timeout,
       })
-      .then(response => {
-        return response.data;
+      .then(async response => {
+        const contract = response.data;
+        const cache = this.spaceClient.getCache();
+
+        // Invalidate cache for this user if caching is enabled
+        if (cache.isEnabled() && contract.userId) {
+          await cache.invalidateUser(contract.userId);
+          // Cache the new contract
+          await cache.set(cache.getContractKey(contract.userId), contract);
+        }
+
+        return contract;
       })
       .catch(error => {
         console.error('Error adding contract:', error.response.data);
@@ -66,6 +95,7 @@ export class ContractModule {
 
   /**
    * Updates the subscription for a user in the Space platform.
+   * This method also invalidates the cached data for the user.
    *
    * @param userId - The ID of the user whose subscription is to be updated.
    * @param newSubscription - The new subscription details to be applied.
@@ -83,8 +113,17 @@ export class ContractModule {
         },
         timeout: this.spaceClient.timeout,
       })
-      .then(response => {
-        return response.data;
+      .then(async response => {
+        const contract = response.data;
+        const cache = this.spaceClient.getCache();
+
+        // Invalidate and update cache for this user if caching is enabled
+        if (cache.isEnabled()) {
+          await cache.invalidateUser(userId);
+          await cache.set(cache.getContractKey(userId), contract);
+        }
+
+        return contract;
       })
       .catch(error => {
         console.error('Error updating contract subscription:', error.response.data);

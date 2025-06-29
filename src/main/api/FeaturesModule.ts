@@ -16,10 +16,12 @@ export class FeatureModule {
 
   /**
    * Evaluates a feature for a specific user by sending a request to the Space API.
+   * Results are cached only for read-only evaluations (when expectedConsumption is empty).
    * 
    * @param userId - The ID of the user for whom the feature is being evaluated.
    * @param featureId - The ID of the feature to be evaluated (i.e. \`${serviceName}-${featureName}\`).
    * @param expectedConsumption - An optional record of expected consumption values for the feature.
+   * @param options - Optional parameters for the evaluation.
    * @returns A promise that resolves with the response data from the Space API.
    * @throws An error if the operation fails.
    */
@@ -29,6 +31,18 @@ export class FeatureModule {
     expectedConsumption: Record<string, number> = {},
     options: {details?: boolean, server?: boolean} = {}
   ): Promise<FeatureEvaluationResult> {
+
+    const cache = this.spaceClient.getCache();
+    const isReadOnlyEvaluation = Object.keys(expectedConsumption).length === 0;
+    const cacheKey = cache.getFeatureKey(userId, featureId);
+
+    // Only use cache for read-only evaluations (no consumption)
+    if (isReadOnlyEvaluation && cache.isEnabled()) {
+      const cachedResult = await cache.get<FeatureEvaluationResult>(cacheKey);
+      if (cachedResult) {
+        return cachedResult;
+      }
+    }
 
     const queryParams = [];
     if (options.details) {
@@ -47,8 +61,23 @@ export class FeatureModule {
         },
         timeout: this.spaceClient.timeout,
       })
-      .then(response => {
-        return response.data;
+      .then(async response => {
+        const result = response.data;
+
+        // Cache the result only for read-only evaluations with shorter TTL
+        if (isReadOnlyEvaluation && cache.isEnabled()) {
+          // Use shorter TTL for feature evaluations (60 seconds)
+          await cache.set(cacheKey, result, 60);
+        } else if (cache.isEnabled()) {
+          // For write operations, invalidate related cache entries
+          await cache.delete(cacheKey);
+          // Also invalidate contract cache as usage might have changed
+          await cache.delete(cache.getContractKey(userId));
+          // Invalidate pricing token as user's consumption has changed
+          await cache.delete(cache.getPricingTokenKey(userId));
+        }
+
+        return result;
       })
       .catch(error => {
         console.error('Error evaluating feature:', error.response.data);
@@ -58,7 +87,9 @@ export class FeatureModule {
 
   /**
    * Reverts the optimistic usage level update performed during a previous evaluation with SPACE.
-   * This method is expected to be used when the transaction of the request has failed in the aplication, and therefore no usage should be charged to the user.
+   * This method is expected to be used when the transaction of the request has failed in the application, and therefore no usage should be charged to the user.
+   * This method also invalidates cached data for the user.
+   * 
    * @param userId - The ID of the user for whom the feature is being evaluated.
    * @param featureId - The ID of the feature to be evaluated (i.e. \`${serviceName}-${featureName}\`).
    * @param revertToLatest - A boolean indicating whether to reset to the latest stored value in the optimistic cache (`true => newest` | `false => oldest`).
@@ -73,7 +104,17 @@ export class FeatureModule {
         },
         timeout: this.spaceClient.timeout,
       })
-      .then(() => {
+      .then(async () => {
+        const cache = this.spaceClient.getCache();
+        
+        // Invalidate related cache entries after reverting
+        if (cache.isEnabled()) {
+          await cache.delete(cache.getFeatureKey(userId, featureId));
+          await cache.delete(cache.getContractKey(userId));
+          // Invalidate pricing token as user's consumption has changed
+          await cache.delete(cache.getPricingTokenKey(userId));
+        }
+        
         return true;
       })
       .catch(error => {
@@ -86,13 +127,24 @@ export class FeatureModule {
    * Generates a pricing token for a user by sending a request to the Space API.
    * This token can be used to retrieve pricing information for the user or to 
    * activate/deactivate UI components without providing access to the SPACE API from 
-   * the internet.
+   * the internet. The token is cached to improve performance.
    * 
    * @param userId - The ID of the user for whom the pricing token is being generated.
    * @returns A promise that resolves with the generated pricing token.
    * @throws An error if the operation fails.
    */
   public async generateUserPricingToken(userId: string): Promise<string> {
+    const cache = this.spaceClient.getCache();
+    const cacheKey = cache.getPricingTokenKey(userId);
+
+    // Try to get from cache first
+    if (cache.isEnabled()) {
+      const cachedToken = await cache.get<string>(cacheKey);
+      if (cachedToken) {
+        return cachedToken;
+      }
+    }
+
     return await axios
       .post(`${this.spaceClient.httpUrl}/features/${userId}/pricing-token`, {}, {
         headers: {
@@ -100,8 +152,16 @@ export class FeatureModule {
         },
         timeout: this.spaceClient.timeout,
       })
-      .then(response => {
-        return response.data.pricingToken;
+      .then(async response => {
+        const token = response.data.pricingToken;
+        
+        // Cache the token if caching is enabled (with longer TTL as tokens are more stable)
+        if (cache.isEnabled()) {
+          // Use longer TTL for pricing tokens (15 minutes)
+          await cache.set(cacheKey, token, 900);
+        }
+        
+        return token;
       })
       .catch(error => {
         try{
