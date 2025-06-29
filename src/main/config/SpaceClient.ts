@@ -2,7 +2,8 @@ import axios from 'axios';
 import { io, Socket } from 'socket.io-client';
 import { ContractModule } from '../api/ContractModule';
 import { FeatureModule } from '../api/FeaturesModule';
-import { SpaceEvent } from '../types';
+import { CacheModule } from '../api/CacheModule';
+import { SpaceEvent, SpaceConnectionOptions, CacheOptions } from '../types';
 
 /**
  * The `SpaceClient` class provides an interface to interact with the Space API and WebSocket services.
@@ -63,14 +64,21 @@ export class SpaceClient {
   public features: FeatureModule;
 
   /**
+   * An internal instance of the `CacheModule` class, which provides caching functionality.
+   * This module is not exposed publicly and can only be accessed by SpaceClient and its modules.
+   */
+  private cache: CacheModule;
+
+  /**
    * Constructs a new instance of the `SpaceClient` class.
    * 
    * @param options - Configuration options for the client.
    * @param options.url - The base URL for the Space API.
    * @param options.apiKey - The API key for authenticating requests.
    * @param options.timeout - (Optional) The timeout duration for HTTP requests, in milliseconds.
+   * @param options.cache - (Optional) Cache configuration options.
    */
-  constructor(options: { url: string; apiKey: string; timeout?: number }) {
+  constructor(options: SpaceConnectionOptions) {
     this.httpUrl = options.url.endsWith('/') ? options.url.slice(0, -1) + '/api/v1' : options.url + '/api/v1';
     this.socketClient = io(options.url.replace(/^http/, 'ws'), {
       path: '/events',
@@ -80,8 +88,16 @@ export class SpaceClient {
     this.pricingSocketNamespace = this.socketClient.io.socket('/pricings');
     this.apiKey = options.apiKey;
     this.timeout = options.timeout || 5000; // Default timeout to 5000ms if not provided
+    
+    // Initialize modules
+    this.cache = new CacheModule(this);
     this.contracts = new ContractModule(this);
     this.features = new FeatureModule(this);
+
+    // Initialize cache if configured
+    if (options.cache) {
+      this.initializeCache(options.cache);
+    }
 
     this.configureSocket();
     this.pricingSocketNamespace.connect();
@@ -147,6 +163,39 @@ export class SpaceClient {
     if (this.pricingSocketNamespace.connected) {
       this.pricingSocketNamespace.disconnect();
       this.pricingSocketNamespace.removeAllListeners();
+    }
+  }
+
+  /**
+   * Close all connections and cleanup resources
+   * This includes WebSocket connections and cache providers
+   */
+  public async close(): Promise<void> {
+    this.disconnect();
+    
+    if (this.cache) {
+      await this.cache.close();
+    }
+  }
+
+  /**
+   * Get the internal cache module
+   * This method is internal and should only be used by SpaceClient modules
+   * @internal
+   */
+  getCache(): CacheModule {
+    return this.cache;
+  }
+
+  /**
+   * Initialize the cache with the provided options
+   * @private
+   */
+  private async initializeCache(cacheOptions: CacheOptions): Promise<void> {
+    try {
+      await this.cache.initialize(cacheOptions);
+    } catch (error) {
+      console.warn('[SpaceClient] Cache initialization failed, continuing without cache:', error);
     }
   }
 

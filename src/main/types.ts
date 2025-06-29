@@ -1,3 +1,5 @@
+import { CacheOptions } from './types/cache';
+
 export interface SpaceConnectionOptions {
   /**
    * The URL of the Space server to connect to.
@@ -13,9 +15,15 @@ export interface SpaceConnectionOptions {
    * Optional timeout for the connection in milliseconds.
    */
   timeout?: number;
+
+  /**
+   * Optional cache configuration
+   */
+  cache?: CacheOptions;
 }
 
 export type SpaceEvent = "PRICING_CREATED" | "PRICING_ARCHIVED" | "PRICING_ACTIVED" | "SERVICE_DISABLED";
 
 export * from './types/contracts';
 export * from './types/features';
+export * from './types/cache';
