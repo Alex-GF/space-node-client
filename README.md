@@ -1,5 +1,51 @@
 # space-node-client
 
+## Release 0.4.0
+
+This minor release preserves existing public methods and adds subscription reads, contract events,
+multiorganization token claims, event deduplication and JWKS verification. Backend SDKs also
+provide pricing YAML reads, novation previews, optimistic concurrency and opt-in idempotent retries.
+Use a SPACE server advertising the required `X-Space-Capabilities`; merging server changes alone
+does not deploy them. Read `userId` through the provided helper: `sub` is opaque.
+
+### Backend contract operations
+
+```typescript
+const members = await client.contracts.updateContractSubscriptionByGroupId(
+  'team-1', subscription, { idempotencyKey: operationId }
+);
+const updated = await client.contracts.updateContractUsageLevels(
+  userId, 'acme', { maxExports: 1 }, { idempotencyKey: `${operationId}:usage` }
+);
+await client.contracts.removeContract(userId);
+```
+
+Set `groupId` when creating a contract to use group novations. Usage changes are increments,
+not absolute totals; the service name is the outer key sent to SPACE. Group novations and usage
+changes reuse the key on retries, invalidate affected entitlements and throw API failures.
+Deletion invalidates the user's cache after success and is not automatically retried or keyed.
+The group operation has the same server semantics as Java/Python and has no per-contract `If-Match`.
+
+The new verifier uses `jose` 5 to preserve Node runtime compatibility; verification remains a lazy
+import. Existing Node requirements are unchanged. Publishing and CI use maintained Node releases.
+
+### Detailed consumption reversions
+
+`features.revertConsumptionDetails(userId, featureId, consumptionId, options?)` preserves the server's refund details. The existing boolean
+`revertConsumption` / `revert_consumption` remains available and unchanged.
+
+| SPACE response | Detailed result |
+| --- | --- |
+| 204 | Found; nothing omitted. No per-limit amounts were returned (`reverted` is absent/null). |
+| 200 | Found; `reverted` contains amounts and `skipped` identifies limits which no longer exist. |
+| 404 | Not found; nothing was changed by this request. |
+| 409 | An API error is propagated, including a disabled service or `IDEMPOTENCY_STATE_CHANGED`; no automatic retry. |
+
+The result is `ConsumptionRevertResult`: consumption ID, `found`, optional `reverted` amounts and
+`skipped` limit IDs (Python uses `consumption_id`; Java uses getters and `isFound()`). To retry one
+operation across process restarts, store and reuse its idempotency key. A new key means a new operation.
+A successful signature still requires the application to match the token's user to its authenticated user.
+
 [![npm version](https://img.shields.io/npm/v/space-node-client.svg)](https://www.npmjs.com/package/space-node-client)
 
 A TypeScript/Node.js client for interacting with the [SPACE pricing-driven self-adaptation solution](https://github.com/Alex-GF/space). This library allows you to connect to a SPACE server, manage contracts and evaluate features.
@@ -80,16 +126,116 @@ console.log(result.eval); // true/false
 
 ### SpaceClient
 
-- `connect({ url, apiKey })` — Connects to the SPACE server and returns a `SpaceClient` instance.
-- `SpaceClient.contracts.addContract(contract)` — Adds a new contract.
-- `SpaceClient.contracts.updateContractSubscription(userId, subscription)` — Updates a user's subscription.
-- `SpaceClient.features.evaluate(userId, featureId, expectedConsumption?)` — Evaluates a feature for a user.
-- `SpaceClient.features.revertEvaluation(userId, featureId)` — Reverts the usage level update performed during a past evaluation. 
+- `connect({ url, apiKey, organizationId? })` — Connects to the SPACE server and returns a `SpaceClient` instance. `organizationId` is only needed for member user keys (`usr_...`) and is sent with the `/contracts` events handshake.
+- `SpaceClient.contracts.addContract(contract, { idempotencyKey? })` — Adds a new contract. The request carries an `Idempotency-Key`.
+- `SpaceClient.contracts.updateContractSubscription(userId, subscription, { expectedContractVersion?, keepBillingPeriod?, rejectPrivate? })` — Updates a user's subscription (novation). On a SPACE that supports them (`X-Space-Capabilities` lists `contract-version` / `keep-billing-period` / `reject-private`): with `expectedContractVersion` the change only applies if nobody changed the contract meanwhile, otherwise it throws `ContractChangedError` (HTTP 412, or earlier if the contract read before the write already shows another version) carrying the current `contractVersion`; `keepBillingPeriod: true` keeps the current billing period instead of restarting it; `rejectPrivate: true` (opt-in, sent as `?rejectPrivate=true`) makes SPACE reject private plans and add-ons (`PRIVATE_PLAN` / `PRIVATE_ADDON`) instead of accepting them, which is what SPACE does by default. If the connected SPACE does not support a requested option, the call throws `SpaceFeatureUnsupportedError` (`capability`, `written: false`) and writes nothing; if the response shows the option was not honoured anyway (no `ETag`, or the billing period restarted), it throws `SpaceFeatureUnsupportedError` with `written: true` and the stored `contract`. Without options, the request is the same as before and no check is made.
+- `SpaceClient.contracts.previewNovation(userId, subscription, { keepBillingPeriod?, rejectPrivate? })` — Dry run of a novation: returns `{ valid, errors, effective, versionChanges, usageWarnings, billingPeriod, contractVersion }` and writes nothing. `contractedServices` may be omitted to let SPACE keep the versions or apply the SPHERE policy. With `keepBillingPeriod` or `rejectPrivate`, throws `SpaceFeatureUnsupportedError` if the SPACE that answered does not advertise `keep-billing-period` or `reject-private`.
+- `SpaceClient.contracts.getContract(userId)` fills `contractVersion` from the `ETag` header when the body lacks it.
+- `SpaceClient.hasCapability(token)` — Whether the connected SPACE advertises a token of `X-Space-Capabilities` (e.g. `idempotency-key`, `atomic-usage-limits`), from the capabilities of a recent response or, when there are none, from `GET /healthcheck`.
+- `SpaceClient.clearCapabilities()` — Forgets the cached `X-Space-Capabilities` (kept for 60 s per client), e.g. right after upgrading SPACE.
+- `SpaceClient.features.evaluate(userId, featureId, expectedConsumption?, { details?, server?, idempotencyKey? })` — Evaluates a feature for a user. With an expected consumption it consumes, and the result carries `consumptionId` (SPACE with `atomic-usage-limits`); the request carries an `Idempotency-Key` (see [Consumption, retries and Idempotency-Key](#consumption-retries-and-idempotency-key)).
+- `SpaceClient.features.revertConsumption(userId, featureId, consumptionId, { idempotencyKey? })` — Reverts exactly the consumption an evaluation reported as `consumptionId`. Resolves `true` when it is reverted (now or earlier; reverting twice changes nothing) and `false` when SPACE does not know it (404: unknown or expired id). Throws `SpaceFeatureUnsupportedError` (`capability: 'atomic-usage-limits'`) without writing on a SPACE that does not support it.
+- `SpaceClient.features.revertEvaluation(userId, featureId, revertToLatest?)` — **Deprecated**, use `revertConsumption`. Reverts the oldest (or, with `revertToLatest`, the newest) consumption of the feature made in the last two minutes, whichever it is.
 
   > [!WARNING]
   > This will only take effect if the evaluation was done less that 2 mins ago, so it's expected to be used as rollback in case of an error during request processing in the host app
 
 - `SpaceClient.features.generateUserPricingToken(userId)` — Evaluates all features that affect a user and returns a [Pricing Token](https://pricing4saas-docs.vercel.app/docs/2.0.1/api/understanding/communication).
+- `SpaceClient.contracts.getPricings(userId)` — Returns the pricing version (plan, add-ons, status, YAML path) of every service in the user's contract, the version SPACE assigns to new contracts and the current `contractVersion`.
+- `SpaceClient.pricings.getYaml(serviceName, pricingVersion, { etag? })` — Returns the raw Pricing2Yaml file of a version, byte for byte, with its `etag` and `syntaxVersion`. With `etag`, a 304 yields `{ notModified: true, yaml: null }`. Throws `PricingYamlUnavailableError` when SPACE cannot provide the original file, and `SpaceFeatureUnsupportedError` (`capability: 'pricing-yaml'`) when an older SPACE ignores `format=yaml` and answers with JSON.
+- `SpaceClient.services.getNewContractsPricing(serviceName)` — Returns the version SPACE assigns to new contracts (`{ version, yamlUrl, source }`, `source` being `sphere-policy`, `default` or `latest-active`).
+
+### Rendering a pricing page
+
+```typescript
+import { PricingYamlUnavailableError } from 'space-node-client';
+
+// Signed-out visitor: the version new contracts get.
+const { version } = await client.services.getNewContractsPricing('acme');
+
+// Signed-in customer: the version of THEIR contract.
+const { services, contractVersion } = await client.contracts.getPricings('user-123');
+const current = services['acme']; // { version, status, plan, addOns, newContractsVersion, yamlUrl }
+
+// The Pricing2Yaml to hand to the renderer (cache it by etag).
+let cached = await client.pricings.getYaml('acme', current.version);
+const refreshed = await client.pricings.getYaml('acme', current.version, { etag: cached.etag! });
+if (!refreshed.notModified) cached = refreshed;
+```
+
+### Changing a subscription safely
+
+```typescript
+import { ContractChangedError, SpaceFeatureUnsupportedError } from 'space-node-client';
+
+const candidate = {
+  subscriptionPlans: { acme: 'pro' },
+  subscriptionAddOns: { acme: { extraStorage: 1 } },
+};
+
+// 1. Preview: validation, effective versions, usage warnings. Nothing is written.
+// rejectPrivate: a customer choosing their own plan must not pick a private (sales-only) one.
+const options = { keepBillingPeriod: true, rejectPrivate: true };
+const preview = await client.contracts.previewNovation('user-123', candidate, options);
+if (!preview.valid) {
+  return preview.errors; // [{ code: 'ADDON_NOT_AVAILABLE', service, path, message }, ...]
+}
+
+// 2. The user confirms; apply exactly what was previewed, guarded by the version it was computed on.
+try {
+  const contract = await client.contracts.updateContractSubscription('user-123', preview.effective, {
+    ...options,
+    expectedContractVersion: preview.contractVersion,
+  });
+} catch (error) {
+  if (error instanceof ContractChangedError) {
+    // Someone changed the contract in between (error.contractVersion is the current one):
+    // preview again and ask the user to confirm.
+  }
+  if (error instanceof SpaceFeatureUnsupportedError) {
+    // This SPACE cannot guarantee error.capability. error.written tells whether the novation
+    // was applied anyway (post-write check) or nothing was sent.
+  }
+  throw error;
+}
+```
+
+> [!NOTE]
+> These endpoints need SPACE with the subscription-change API (`GET /contracts/{userId}/pricings`, `GET /services/{s}/pricings/{v}?format=yaml`, `GET /services/{s}/pricings/new-contracts`, `POST /contracts/{userId}/novation/preview`). Older SPACE versions answer 404 to them (`getYaml` throws `SpaceFeatureUnsupportedError`). The guarantees of `expectedContractVersion`, `keepBillingPeriod` and `rejectPrivate` hold only on a SPACE that advertises `contract-version`, `keep-billing-period` and `reject-private` in `X-Space-Capabilities`; against an older SPACE the client refuses those options with `SpaceFeatureUnsupportedError` instead of sending a novation the server would apply unconditionally (or with private plans accepted). `addContract` takes no options: `rejectPrivate` is not exposed for `POST /contracts` in this client.
+
+### Consumption, retries and Idempotency-Key
+
+Consumptions, reverts, contract creation (`addContract`) and novations (`updateContractSubscription`) are writes that must not be applied twice when a request is retried after a timeout or a dropped connection. Every such call sends an `Idempotency-Key` header. On a SPACE with the `idempotency-key` capability, a request repeated with the same key is answered with the stored outcome of the first one (`Idempotent-Replayed: true`) and applies nothing; an older SPACE ignores the header. Evaluations without a consumption and reads carry no key.
+
+- **Generated keys.** By default the client creates a random UUID v4 per call and keeps it for that call's own retries. That covers retries inside one process.
+- **Your own key.** When the operation may be retried after your process restarts (a job queue, an outbox, a webhook handler), create the key once, store it with the operation, and pass it on every attempt: `{ idempotencyKey }`. Use a new key for every new operation, and a new key after you correct a request that SPACE refused with a `4xx`. With a key of your own the client first checks that SPACE advertises `idempotency-key` and throws `SpaceFeatureUnsupportedError` (`written: false`) if it does not, since the guarantee you asked for would silently not hold.
+- **Retries** are off by default (`retries: 0`). With `retries: n` (0 to 10) the client retries those keyed writes, with the same key and the same request, after a network error, a `5xx` or a `409 IDEMPOTENCY_IN_PROGRESS` (another request with the key is still running), and only while SPACE advertises `idempotency-key`: without it each retry could be applied again. It waits `Retry-After` when SPACE sends one (and gives up if that is longer than `retryMaxDelayMs`), otherwise an exponential backoff with jitter from `retryBaseDelayMs` (250 ms) up to `retryMaxDelayMs` (10 s). Other `4xx` and writes without a key are never retried.
+- **Errors.** `IdempotencyConflictError` (`409 IDEMPOTENCY_CONFLICT`: the key was used for a different request), `IdempotencyInProgressError` (`409 IDEMPOTENCY_IN_PROGRESS` once the retries are spent; `retryAfter` in seconds; retry later with the same key) and `IdempotencyKeyInvalidError` (`400 IDEMPOTENCY_KEY_INVALID`). All extend `IdempotencyError` (`code`, `status`, `idempotencyKey`, `cause`). A key that is not 1 to 255 characters is rejected with a `TypeError` before anything is sent.
+
+```typescript
+import { IdempotencyInProgressError, connect } from 'space-node-client';
+
+const client = connect({ url: 'http://localhost:5403', apiKey: 'your-api-key', retries: 2 });
+
+// job.idempotencyKey was created (crypto.randomUUID()) and stored when the job was enqueued.
+const result = await client.features.evaluate(job.userId, 'acme-exports', { 'acme-maxExports': 1 }, {
+  idempotencyKey: job.idempotencyKey,
+});
+if (!result.eval) {
+  return; // over the limit: nothing was consumed
+}
+try {
+  await runExport(job);
+} catch (error) {
+  // Give the consumption back: exactly this one, whatever happened meanwhile.
+  await client.features.revertConsumption(job.userId, 'acme-exports', result.consumptionId!, {
+    idempotencyKey: `${job.idempotencyKey}:revert`,
+  });
+  throw error;
+}
+```
+
+With `atomic-usage-limits`, SPACE applies a consumption only if every amount fits its limit, also under concurrency; one that does not fit answers `eval: false` and consumes nothing. The `consumptionId` stays revertible for SPACE's `CONSUMPTION_RETENTION_SECONDS` (24 h by default) and keys are remembered for `IDEMPOTENCY_KEY_TTL_SECONDS` (24 h by default); after that the same key starts a new operation.
 
 ### Events
 
@@ -102,9 +248,14 @@ These are the events that can be listened:
 - `pricing_actived` — Emitted when a pricing's availability has changed from archived to actived.
 - `pricing_archived` — Emitted when a pricing's availability has changed from actived to archived.
 - `service_disabled` — Emitted when a service is disabled in SPACE.
+- `contract_created` — Emitted when a contract of your organisation is created.
+- `contract_novated` — Emitted when a contract of your organisation changes subscription (novation).
+- `contract_deleted` — Emitted when a contract of your organisation is deleted.
+- `contract_renewed` — Emitted when a contract of your organisation renews its billing period.
+- `resync` — Emitted every time a namespace (`pricings` or `contracts`) connects, with `{ namespace, reconnect }`. See [Delivery guarantees](#delivery-guarantees).
 - `error` - Emitted when an error during the connection with SPACE.
 
-All events, except `synchronized` and `error`, brings a data object with the following structure:
+The pricing events (`pricing_*`, `service_disabled`) bring a data object with the following structure:
 
 ```typescript
 {
@@ -122,6 +273,140 @@ client.on('pricing_archived', data => {
   console.log('Pricing Version:', data.pricingVersion);
 });
 ```
+
+#### Contract events
+
+Contract events travel over the authenticated `/contracts` namespace of SPACE, which only delivers the events of the organisation your API key belongs to. The client opens it the first time you register a contract listener, with `auth: { apiKey }` for an organisation key, or `auth: { apiKey, organizationId }` when you pass `organizationId` to `connect`/`new SpaceClient` (required by SPACE for member user keys, `usr_...`), so apps that do not listen to contract events keep a single unauthenticated connection. A rejected key is reported through the `error` listener. Before calling your listener, the client invalidates its cached contract, evaluations and pricing token for that user.
+
+```typescript
+import type { ContractEventDetails } from 'space-node-client';
+
+client.on('contract_novated', (data: ContractEventDetails) => {
+  // { userId, organizationId, contractVersion, services: string[] }
+  // contractVersion is a string, or null for contract_deleted.
+  notifyBrowserSessions(data.userId); // e.g. push a fresh pricing token to the user's tabs
+});
+```
+
+> [!NOTE]
+> Contract events need SPACE with the `/contracts` events namespace. Older versions reject the namespace and the `error` listener receives the connection error; pricing events are unaffected.
+
+#### Event ids and occurredAt
+
+Pricing and contract listeners get a second argument, `SpaceEventMeta`:
+
+```typescript
+import type { ContractEventDetails, SpaceEventMeta } from 'space-node-client';
+
+client.on('contract_novated', (data: ContractEventDetails, meta: SpaceEventMeta) => {
+  meta.code;          // 'CONTRACT_NOVATED'
+  meta.eventId;       // '019a2a6b-7c1e-7d3f-9b2a-5c4e8f1a2b3c', the same in every copy of the event
+  meta.occurredAt;    // Date: when SPACE stored the change
+  meta.rawOccurredAt; // '2026-10-27T10:00:00.123Z', as sent
+});
+```
+
+SPACE sends `eventId` and `occurredAt` from the version that advertises `contract-event-ids` in `X-Space-Capabilities`. With an older SPACE they are `undefined` (and so is `occurredAt` if the value is not a valid date). Listeners that take one argument keep working.
+
+#### Delivery guarantees
+
+SPACE events are hints that something changed, not a log of the changes:
+
+- **At most once per connection, no replay.** An event goes to the connections open when it is emitted. While the client is disconnected or reconnecting, events are lost, and SPACE does not resend them.
+- **Repeats are possible.** A consumer with several connections gets one copy per connection, all with the same `eventId`. The client drops a repeated `eventId` before invalidating the cache or calling your listener. It remembers the last 10,000 ids for up to 10 minutes (both namespaces share the window); events without `eventId` are always delivered. Each `SpaceClient` has its own window, so two clients (or two replicas of your backend) each get their copy, which is what each needs to refresh its own cache.
+- **No ordering.** Events may arrive in another order than the changes were stored. Never order events by `eventId` (compare it for equality only) and do not compare `occurredAt` across SPACE instances, whose clocks may differ. `contractVersion` is a hash, not a counter.
+
+So treat a contract event as a reason to re-read the contract (`client.contracts.getContract(userId)`), and compare its `contractVersion` with the one you hold: unchanged means nothing to do, and a 404 means it was deleted. A late, repeated or out-of-order event then costs one read and changes nothing.
+
+After a reconnection, re-read the contracts you hold, because anything that changed while the client was disconnected was not announced. The `resync` event tells you when. When the `contracts` namespace reconnects, the client first invalidates the cached contracts, evaluations and pricing tokens of every user, so the reads below go to SPACE:
+
+```typescript
+import type { ResyncInfo } from 'space-node-client';
+
+client.on('resync', ({ namespace, reconnect }: ResyncInfo) => {
+  // reconnect is false on the first connection of a namespace, true after a reconnection.
+  if (namespace === 'contracts' && reconnect) {
+    void refreshCachedContracts(); // e.g. getContract() for each user you hold, comparing contractVersion
+  }
+});
+```
+
+If you read contracts before the first contract listener opened the namespace, re-read them on the first `resync` too.
+
+The deduplication window is configurable, or can be turned off:
+
+```typescript
+const client = connect({
+  url: 'http://localhost:5403',
+  apiKey: 'your-api-key',
+  eventDeduplication: { maxEntries: 50_000, windowMs: 30 * 60_000 }, // or false to deliver every copy
+});
+```
+
+### Pricing token payload
+
+`PricingTokenPayload` types the decoded pricing token. Tokens issued by SPACE versions with the subscription-change API also carry `subscription` (the contracted versions, plans, add-ons and the `contractVersion` at issue time); it is optional so older tokens still type-check.
+
+```typescript
+import { pricingTokenUserId, type PricingTokenPayload } from 'space-node-client';
+
+const token = await client.features.generateUserPricingToken('user-123');
+// Decoded, NOT verified: fine for reading your own freshly issued token. To trust a token that came
+// back from a browser, verify it (see "Verifying pricing tokens" below).
+const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString()) as PricingTokenPayload;
+payload.subscription?.subscriptionPlans.acme; // 'pro'
+pricingTokenUserId(payload); // 'user-123'
+```
+
+#### Token claims: `userId`, `organizationId`, `aud`, `iss`
+
+A `userId` is unique only within its organization, so SPACE versions with per-organization userIds (capability `contract-userid-per-org`) issue tokens with:
+
+| Claim | Value |
+| --- | --- |
+| `sub` | `urn:space:<organizationId>:<percent-encoded userId>`. Opaque: do not parse it. |
+| `userId` | The userId as stored in SPACE (not encoded). |
+| `organizationId` | The organization of the contract. |
+| `aud` | The organization the token is for (same value as `organizationId`). |
+| `iss` | The SPACE server: its `JWT_ISSUER`, `space` by default. |
+
+Tokens of older SPACE versions only have the bare userId in `sub`, so the new claims are optional in `PricingTokenPayload`. `pricingTokenUserId(payload)` returns the `userId` claim, and falls back to `sub` only when the token has no `userId` claim (an older server); it never parses the URN. Code that used `payload.sub` as the userId should switch to it. When a token is checked on the server side, also compare `organizationId` (or `aud`) with your organization: the same userId can exist in another organization of the same SPACE.
+
+### Verifying pricing tokens
+
+SPACE versions with the capability `pricing-token-jwks` sign pricing tokens with ES256 and publish the public keys at `GET {url}/api/v1/.well-known/jwks.json` (no API key). A token that comes back to your backend (from a browser, a queue, another service) can then be verified with public material only:
+
+```typescript
+const payload = await client.features.verifyPricingToken(token, { organizationId: 'my-org-id' });
+pricingTokenUserId(payload); // the userId, from a token SPACE signed for your organization
+```
+
+or, without a `SpaceClient` (no API key needed):
+
+```typescript
+import { PricingTokenVerifier } from 'space-node-client';
+
+const verifier = new PricingTokenVerifier({ url: 'https://space.example.com', organizationId: 'my-org-id' });
+const payload = await verifier.verify(token);
+```
+
+What is checked:
+
+- The signature is ES256 by a key of the JWKS, chosen by the token's `kid`. Any other `alg` (`HS256`, `none`, ...) is rejected, and so is a token with a `jwk`, `jku`, `x5u` or `x5c` header: keys only come from the JWKS URL of your SPACE.
+- `exp` is required and checked (`clockToleranceSeconds`, default 0, adds leeway).
+- `iss` equals `issuer` (the `JWT_ISSUER` of your SPACE, `space` by default).
+- `aud` and `organizationId` equal the expected organization. It is required: pass `organizationId` to the call, to the verifier, or to `connect`/`new SpaceClient` (the client's `organizationId` option is used when the call names none). A userId is only unique within an organization, so a valid signature alone does not tell you the token is for one of your users.
+
+The JWKS is cached for the `max-age` of its response (SPACE sends 5 minutes; 5 minutes also when there is no `Cache-Control`, none with `no-store`/`no-cache`) and fetched again when a token names a `kid` it does not know, at most once per `refetchCooldownMs` (default 30 s). Key rotations need nothing on your side. Keep one verifier (or one client) and reuse it so the cache is shared.
+
+Errors (all `PricingTokenVerificationError`, with a `code`): `PricingTokenSignatureError` (forged or tampered token), `PricingTokenExpiredError` (`expiredAt`), `PricingTokenAudienceError` (another organization), `PricingTokenIssuerError`, `PricingTokenUnknownKeyError` (`kid` not published, e.g. a removed key), and the base class with `PRICING_TOKEN_INVALID` (malformed token, wrong `alg`, forbidden header, missing claims) or `PRICING_TOKEN_JWKS_UNAVAILABLE` (the JWKS could not be fetched). A SPACE that does not publish its keys (older versions, or one running in the deprecated `PRICING_TOKEN_ALG=HS256` mode) gives `SpaceFeatureUnsupportedError` with `capability: 'pricing-token-jwks'`.
+
+> [!NOTE]
+> Verification uses [`jose`](https://github.com/panva/jose) (a dependency without dependencies of its own), which is only loaded the first time a token is verified. The verifier uses Node crypto through jose 5 and preserves the SDK's existing Node runtime requirements.
+
+## Tests
+
+`pnpm test` runs the whole suite; most suites expect a SPACE instance on `http://localhost:3000` (see `src/test/lib/axios.ts`) and Redis for the Redis suite. `pnpm test:mocked` runs only the suites under `src/test/mocked`, which start an in-process HTTP and Socket.IO server that mimics SPACE and need nothing else.
 
 ## TypeScript Support
 

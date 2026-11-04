@@ -1,24 +1,24 @@
 name: Node.js Package
 on:
   release:
-    types: [created]
+    types: [published]
 jobs:
   publish-npm:
     name: Deployment to NPM
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 24
           registry-url: https://registry.npmjs.org/
       
       - name: Install Dependencies
-        run: npm i
+        run: corepack enable && pnpm install --frozen-lockfile
   
       - name: Build Package
-        run: npm run build
+        run: pnpm test:mocked && pnpm exec tsc --noEmit && pnpm build
         
       - name: Deploy Package
         run: npm publish
