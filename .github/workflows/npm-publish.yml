@@ -1,26 +1,31 @@
-name: Node.js Package
+name: Publish Node SDK
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing validated release tag to publish
+        required: true
+        type: string
+permissions:
+  contents: read
+  id-token: write
 jobs:
   publish-npm:
-    name: Deployment to NPM
     runs-on: ubuntu-latest
     environment: production
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.event.release.tag_name }}
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org/
-      
-      - name: Install Dependencies
+      - name: Install dependencies
         run: corepack enable && pnpm install --frozen-lockfile
-  
-      - name: Build Package
+      - name: Validate package
         run: pnpm test:mocked && pnpm exec tsc --noEmit && pnpm build
-        
-      - name: Deploy Package
-        run: npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{secrets.NPM_TOKEN}}
+      - name: Publish to npm with trusted publishing
+        run: npm publish --provenance
