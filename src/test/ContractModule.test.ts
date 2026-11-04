@@ -68,7 +68,7 @@ describe('Contracts Module Test Suite', () => {
     expect(response).toBeDefined();
     expect(response.userContact.userId).toBe(testUserId);
     expect(Object.values(response.contractedServices)[0]).toBe('1.0.0');
-    expect(response.subscriptionPlans.tomatoMeter).toBe('PREMIUM');
-    expect(response.subscriptionAddOns.tomatoMeter['exportAsJson']).toBe(1);
+    expect(response.subscriptionPlans.tomatometer).toBe('PREMIUM');
+    expect(response.subscriptionAddOns.tomatometer['exportAsJson']).toBe(1);
   });
 });

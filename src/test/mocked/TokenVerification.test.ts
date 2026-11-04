@@ -4,7 +4,7 @@ import {
   calculateJwkThumbprint,
   exportJWK,
   generateKeyPair,
-  type CryptoKey,
+  type KeyLike,
   type JWK,
   type JWTPayload,
 } from 'jose';
@@ -28,7 +28,7 @@ const JWKS_PATH = '/.well-known/jwks.json';
 const CAPABILITIES = ['contract-userid-per-org', 'pricing-token-jwks'];
 
 interface TestKey {
-  privateKey: CryptoKey;
+  privateKey: KeyLike;
   publicJwk: JWK;
   kid: string;
 }

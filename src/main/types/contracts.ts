@@ -12,6 +12,8 @@ export interface FallbackSubscription {
 }
 
 export interface ContractToCreate {
+  /** Optional group used by group novations. */
+  groupId?: string;
   userContact: {
     userId: string;
     username: string;
@@ -35,6 +37,7 @@ export type Subscription = Pick<
 >;
 
 export interface Contract {
+  groupId?: string;
   userContact: UserContact;
   billingPeriod: {
     startDate: Date;

@@ -214,6 +214,49 @@ export class ContractModule {
       });
   }
 
+  /** Novate every contract in a group. Uses one idempotency key across retries. */
+  public async updateContractSubscriptionByGroupId(
+    groupId: string, newSubscription: Subscription, options: WriteOptions = {}
+  ): Promise<Contract[]> {
+    const response = await sendKeyedWrite<Contract[]>(this.spaceClient, {
+      method: 'put', url: `${this.spaceClient.httpUrl}/contracts`,
+      params: { groupId }, data: newSubscription,
+      headers: { 'x-api-key': this.spaceClient.apiKey }, timeout: this.spaceClient.timeout,
+    }, options.idempotencyKey);
+    const cache = this.spaceClient.getCache();
+    for (const contract of response.data) {
+      const userId = contract.userContact?.userId;
+      if (userId) {
+        await cache.invalidateUser(userId);
+        if (cache.isEnabled()) await cache.set(cache.getContractKey(userId), contract);
+      }
+    }
+    return response.data;
+  }
+
+  /** Apply increments (not absolute values) to a service's usage levels. */
+  public async updateContractUsageLevels(
+    userId: string, serviceName: string, increments: Record<string, number>, options: WriteOptions = {}
+  ): Promise<Contract> {
+    const response = await sendKeyedWrite<Contract>(this.spaceClient, {
+      method: 'put', url: `${this.spaceClient.httpUrl}/contracts/${encodeURIComponent(userId)}/usageLevels`,
+      data: { [serviceName]: increments },
+      headers: { 'x-api-key': this.spaceClient.apiKey }, timeout: this.spaceClient.timeout,
+    }, options.idempotencyKey);
+    const cache = this.spaceClient.getCache();
+    await cache.invalidateUser(userId);
+    if (cache.isEnabled()) await cache.set(cache.getContractKey(userId), response.data);
+    return response.data;
+  }
+
+  /** Delete a contract and invalidate its cached entitlements. DELETE is not automatically retried. */
+  public async removeContract(userId: string): Promise<void> {
+    await axios.delete(`${this.spaceClient.httpUrl}/contracts/${encodeURIComponent(userId)}`, {
+      headers: { 'x-api-key': this.spaceClient.apiKey }, timeout: this.spaceClient.timeout,
+    });
+    await this.spaceClient.getCache().invalidateUser(userId);
+  }
+
   /**
    * Previews a novation without applying it (`POST /contracts/{userId}/novation/preview`).
    * SPACE runs the same policy and validation as `updateContractSubscription` and writes nothing.

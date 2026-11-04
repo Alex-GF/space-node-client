@@ -45,7 +45,7 @@ describe('connect() connection options', () => {
       apiKey: 'test-api-key',
       timeout: 1234,
       cache: { enabled: true, type: CacheType.BUILTIN, ttl: 60 },
-    } satisfies Required<SpaceConnectionOptions>;
+    } satisfies Required<Pick<SpaceConnectionOptions, 'url' | 'apiKey' | 'timeout' | 'cache'>>;
 
     connectAndTrack(options);
 

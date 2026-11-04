@@ -1,5 +1,51 @@
 # space-node-client
 
+## Release 0.4.0
+
+This minor release preserves existing public methods and adds subscription reads, contract events,
+multiorganization token claims, event deduplication and JWKS verification. Backend SDKs also
+provide pricing YAML reads, novation previews, optimistic concurrency and opt-in idempotent retries.
+Use a SPACE server advertising the required `X-Space-Capabilities`; merging server changes alone
+does not deploy them. Read `userId` through the provided helper: `sub` is opaque.
+
+### Backend contract operations
+
+```typescript
+const members = await client.contracts.updateContractSubscriptionByGroupId(
+  'team-1', subscription, { idempotencyKey: operationId }
+);
+const updated = await client.contracts.updateContractUsageLevels(
+  userId, 'acme', { maxExports: 1 }, { idempotencyKey: `${operationId}:usage` }
+);
+await client.contracts.removeContract(userId);
+```
+
+Set `groupId` when creating a contract to use group novations. Usage changes are increments,
+not absolute totals; the service name is the outer key sent to SPACE. Group novations and usage
+changes reuse the key on retries, invalidate affected entitlements and throw API failures.
+Deletion invalidates the user's cache after success and is not automatically retried or keyed.
+The group operation has the same server semantics as Java/Python and has no per-contract `If-Match`.
+
+The new verifier uses `jose` 5 to preserve Node runtime compatibility; verification remains a lazy
+import. Existing Node requirements are unchanged. Publishing and CI use maintained Node releases.
+
+### Detailed consumption reversions
+
+`features.revertConsumptionDetails(userId, featureId, consumptionId, options?)` preserves the server's refund details. The existing boolean
+`revertConsumption` / `revert_consumption` remains available and unchanged.
+
+| SPACE response | Detailed result |
+| --- | --- |
+| 204 | Found; nothing omitted. No per-limit amounts were returned (`reverted` is absent/null). |
+| 200 | Found; `reverted` contains amounts and `skipped` identifies limits which no longer exist. |
+| 404 | Not found; nothing was changed by this request. |
+| 409 | An API error is propagated, including a disabled service or `IDEMPOTENCY_STATE_CHANGED`; no automatic retry. |
+
+The result is `ConsumptionRevertResult`: consumption ID, `found`, optional `reverted` amounts and
+`skipped` limit IDs (Python uses `consumption_id`; Java uses getters and `isFound()`). To retry one
+operation across process restarts, store and reuse its idempotency key. A new key means a new operation.
+A successful signature still requires the application to match the token's user to its authenticated user.
+
 [![npm version](https://img.shields.io/npm/v/space-node-client.svg)](https://www.npmjs.com/package/space-node-client)
 
 A TypeScript/Node.js client for interacting with the [SPACE pricing-driven self-adaptation solution](https://github.com/Alex-GF/space). This library allows you to connect to a SPACE server, manage contracts and evaluate features.
@@ -356,7 +402,7 @@ The JWKS is cached for the `max-age` of its response (SPACE sends 5 minutes; 5 m
 Errors (all `PricingTokenVerificationError`, with a `code`): `PricingTokenSignatureError` (forged or tampered token), `PricingTokenExpiredError` (`expiredAt`), `PricingTokenAudienceError` (another organization), `PricingTokenIssuerError`, `PricingTokenUnknownKeyError` (`kid` not published, e.g. a removed key), and the base class with `PRICING_TOKEN_INVALID` (malformed token, wrong `alg`, forbidden header, missing claims) or `PRICING_TOKEN_JWKS_UNAVAILABLE` (the JWKS could not be fetched). A SPACE that does not publish its keys (older versions, or one running in the deprecated `PRICING_TOKEN_ALG=HS256` mode) gives `SpaceFeatureUnsupportedError` with `capability: 'pricing-token-jwks'`.
 
 > [!NOTE]
-> Verification uses [`jose`](https://github.com/panva/jose) (a dependency without dependencies of its own), which is only loaded the first time a token is verified. It needs Node.js 20 or later (the WebCrypto global); apps that never verify tokens are unaffected.
+> Verification uses [`jose`](https://github.com/panva/jose) (a dependency without dependencies of its own), which is only loaded the first time a token is verified. The verifier uses Node crypto through jose 5 and preserves the SDK's existing Node runtime requirements.
 
 ## Tests
 

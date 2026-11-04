@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { SpaceClient } from '../config/SpaceClient';
 import { SpaceFeatureUnsupportedError } from '../errors';
-import { EvaluateOptions, FeatureEvaluationResult, WriteOptions } from '../types';
+import { ConsumptionRevertResult, EvaluateOptions, FeatureEvaluationResult, WriteOptions } from '../types';
 import { ATOMIC_USAGE_LIMITS, checkId, sendKeyedWrite } from '../utils/idempotency';
 import { PricingTokenPayload } from '../types';
 import { PricingTokenVerifier, VerifyPricingTokenOptions } from './PricingTokenVerifier';
@@ -138,6 +138,16 @@ export class FeatureModule {
     consumptionId: string,
     options: WriteOptions = {}
   ): Promise<boolean> {
+    return (await this.revertConsumptionDetails(userId, featureId, consumptionId, options)).found;
+  }
+
+  /** Revert a consumption without losing the server's per-limit reverted/skipped details. */
+  public async revertConsumptionDetails(
+    userId: string,
+    featureId: string,
+    consumptionId: string,
+    options: WriteOptions = {}
+  ): Promise<ConsumptionRevertResult> {
     checkId(consumptionId, 'consumptionId');
     if (!(await this.spaceClient.hasCapability(ATOMIC_USAGE_LIMITS))) {
       throw new SpaceFeatureUnsupportedError(
@@ -160,13 +170,13 @@ export class FeatureModule {
       },
       options.idempotencyKey
     )
-      .then(async () => {
+      .then(async response => {
         await this.invalidateUsage(userId, featureId);
-        return true;
+        return { consumptionId, found: true, skipped: [], ...(response.status === 200 ? response.data : {}) };
       })
       .catch(error => {
         if (error?.response?.status === 404) {
-          return false;
+          return { consumptionId, found: false, skipped: [] };
         }
         console.error(
           `Error reverting consumption ${consumptionId} of feature ${featureId} for user ${userId}:`,

@@ -20,3 +20,10 @@ export interface EvaluateOptions extends WriteOptions {
   details?: boolean;
   server?: boolean;
 }
+/** Detailed refund outcome. A 204 has no per-limit amounts; a 200 reports omitted limits. */
+export interface ConsumptionRevertResult {
+  consumptionId: string;
+  found: boolean;
+  reverted?: Record<string, number>;
+  skipped: string[];
+}
