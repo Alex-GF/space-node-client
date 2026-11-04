@@ -3,9 +3,12 @@ import { SpaceClient } from '../config/SpaceClient';
 import { SpaceFeatureUnsupportedError } from '../errors';
 import { EvaluateOptions, FeatureEvaluationResult, WriteOptions } from '../types';
 import { ATOMIC_USAGE_LIMITS, checkId, sendKeyedWrite } from '../utils/idempotency';
+import { PricingTokenPayload } from '../types';
+import { PricingTokenVerifier, VerifyPricingTokenOptions } from './PricingTokenVerifier';
 
 export class FeatureModule {
   private spaceClient: SpaceClient;
+  private verifier: PricingTokenVerifier | null = null;
 
   /**
    * Creates an instance of the `FeatureModule` class.
@@ -281,5 +284,36 @@ export class FeatureModule {
           throw error;
         }
       });
+  }
+  /**
+   * Verifies a pricing token with the public keys of this SPACE (JWKS, capability
+   * `pricing-token-jwks`) and returns its payload: ES256 signature by a published key, `exp`,
+   * `iss` (`space` unless `issuer` is given) and `aud`/`organizationId`. Use it for tokens that come
+   * back from a browser or another service; it needs no API key. The JWKS is cached and shared by
+   * all calls of this client (see {@link PricingTokenVerifier}).
+   *
+   * @param token - The pricing token.
+   * @param options.organizationId - The organization the token must be issued for. Defaults to the
+   *   `organizationId` option of the client; one of the two is required.
+   * @param options.issuer - The expected `iss` (the `JWT_ISSUER` of your SPACE). Default `space`.
+   * @param options.clockToleranceSeconds - Leeway for `exp`, in seconds. Default 0.
+   * @throws The errors of {@link PricingTokenVerifier.verify}.
+   */
+  public async verifyPricingToken(
+    token: string,
+    options: VerifyPricingTokenOptions = {}
+  ): Promise<PricingTokenPayload> {
+    return this.getVerifier().verify(token, {
+      ...options,
+      organizationId: options.organizationId ?? this.spaceClient.organizationId,
+    });
+  }
+
+  private getVerifier(): PricingTokenVerifier {
+    this.verifier ??= new PricingTokenVerifier({
+      jwksUrl: `${this.spaceClient.httpUrl}/.well-known/jwks.json`,
+      timeout: this.spaceClient.timeout,
+    });
+    return this.verifier;
   }
 }
