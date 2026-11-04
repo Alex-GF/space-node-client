@@ -82,7 +82,10 @@ console.log(result.eval); // true/false
 
 - `connect({ url, apiKey })` — Connects to the SPACE server and returns a `SpaceClient` instance.
 - `SpaceClient.contracts.addContract(contract)` — Adds a new contract.
-- `SpaceClient.contracts.updateContractSubscription(userId, subscription)` — Updates a user's subscription.
+- `SpaceClient.contracts.updateContractSubscription(userId, subscription, { expectedContractVersion?, keepBillingPeriod?, rejectPrivate? })` — Updates a user's subscription (novation). On a SPACE that supports them (`X-Space-Capabilities` lists `contract-version` / `keep-billing-period` / `reject-private`): with `expectedContractVersion` the change only applies if nobody changed the contract meanwhile, otherwise it throws `ContractChangedError` (HTTP 412, or earlier if the contract read before the write already shows another version) carrying the current `contractVersion`; `keepBillingPeriod: true` keeps the current billing period instead of restarting it; `rejectPrivate: true` (opt-in, sent as `?rejectPrivate=true`) makes SPACE reject private plans and add-ons (`PRIVATE_PLAN` / `PRIVATE_ADDON`) instead of accepting them, which is what SPACE does by default. If the connected SPACE does not support a requested option, the call throws `SpaceFeatureUnsupportedError` (`capability`, `written: false`) and writes nothing; if the response shows the option was not honoured anyway (no `ETag`, or the billing period restarted), it throws `SpaceFeatureUnsupportedError` with `written: true` and the stored `contract`. Without options, the request is the same as before and no check is made.
+- `SpaceClient.contracts.previewNovation(userId, subscription, { keepBillingPeriod?, rejectPrivate? })` — Dry run of a novation: returns `{ valid, errors, effective, versionChanges, usageWarnings, billingPeriod, contractVersion }` and writes nothing. `contractedServices` may be omitted to let SPACE keep the versions or apply the SPHERE policy. With `keepBillingPeriod` or `rejectPrivate`, throws `SpaceFeatureUnsupportedError` if the SPACE that answered does not advertise `keep-billing-period` or `reject-private`.
+- `SpaceClient.contracts.getContract(userId)` fills `contractVersion` from the `ETag` header when the body lacks it.
+- `SpaceClient.clearCapabilities()` — Forgets the cached `X-Space-Capabilities` (kept for 60 s per client), e.g. right after upgrading SPACE.
 - `SpaceClient.features.evaluate(userId, featureId, expectedConsumption?)` — Evaluates a feature for a user.
 - `SpaceClient.features.revertEvaluation(userId, featureId)` — Reverts the usage level update performed during a past evaluation. 
 
@@ -112,8 +115,45 @@ const refreshed = await client.pricings.getYaml('acme', current.version, { etag:
 if (!refreshed.notModified) cached = refreshed;
 ```
 
+### Changing a subscription safely
+
+```typescript
+import { ContractChangedError, SpaceFeatureUnsupportedError } from 'space-node-client';
+
+const candidate = {
+  subscriptionPlans: { acme: 'pro' },
+  subscriptionAddOns: { acme: { extraStorage: 1 } },
+};
+
+// 1. Preview: validation, effective versions, usage warnings. Nothing is written.
+// rejectPrivate: a customer choosing their own plan must not pick a private (sales-only) one.
+const options = { keepBillingPeriod: true, rejectPrivate: true };
+const preview = await client.contracts.previewNovation('user-123', candidate, options);
+if (!preview.valid) {
+  return preview.errors; // [{ code: 'ADDON_NOT_AVAILABLE', service, path, message }, ...]
+}
+
+// 2. The user confirms; apply exactly what was previewed, guarded by the version it was computed on.
+try {
+  const contract = await client.contracts.updateContractSubscription('user-123', preview.effective, {
+    ...options,
+    expectedContractVersion: preview.contractVersion,
+  });
+} catch (error) {
+  if (error instanceof ContractChangedError) {
+    // Someone changed the contract in between (error.contractVersion is the current one):
+    // preview again and ask the user to confirm.
+  }
+  if (error instanceof SpaceFeatureUnsupportedError) {
+    // This SPACE cannot guarantee error.capability. error.written tells whether the novation
+    // was applied anyway (post-write check) or nothing was sent.
+  }
+  throw error;
+}
+```
+
 > [!NOTE]
-> These endpoints need SPACE with the subscription-change API (`GET /contracts/{userId}/pricings`, `GET /services/{s}/pricings/{v}?format=yaml`, `GET /services/{s}/pricings/new-contracts`). Older SPACE versions answer 404 (and `getYaml` throws `SpaceFeatureUnsupportedError`).
+> These endpoints need SPACE with the subscription-change API (`GET /contracts/{userId}/pricings`, `GET /services/{s}/pricings/{v}?format=yaml`, `GET /services/{s}/pricings/new-contracts`, `POST /contracts/{userId}/novation/preview`). Older SPACE versions answer 404 to them (`getYaml` throws `SpaceFeatureUnsupportedError`). The guarantees of `expectedContractVersion`, `keepBillingPeriod` and `rejectPrivate` hold only on a SPACE that advertises `contract-version`, `keep-billing-period` and `reject-private` in `X-Space-Capabilities`; against an older SPACE the client refuses those options with `SpaceFeatureUnsupportedError` instead of sending a novation the server would apply unconditionally (or with private plans accepted). `addContract` takes no options: `rejectPrivate` is not exposed for `POST /contracts` in this client.
 
 ### Events
 
