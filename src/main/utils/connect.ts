@@ -22,6 +22,12 @@ export function connect(options?: SpaceConnectionOptions): SpaceClient{
   return new SpaceClient({
     url: options.url,
     apiKey: options.apiKey,
+    organizationId: options.organizationId,
+    eventDeduplication: options.eventDeduplication,
     timeout: options?.timeout || 5000, // Default timeout to 5000ms if not provided
+    cache: options.cache,
+    retries: options.retries,
+    retryBaseDelayMs: options.retryBaseDelayMs,
+    retryMaxDelayMs: options.retryMaxDelayMs,
   });
 }

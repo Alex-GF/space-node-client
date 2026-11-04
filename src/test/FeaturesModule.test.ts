@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { SpaceClient } from '../main/index';
+import { SpaceClient, pricingTokenUserId } from '../main/index';
 import { setUpTestEnvironment } from './utils/setup';
 import { v4 as uuidv4 } from 'uuid';
 import { Contract } from '../main/types';
@@ -92,8 +92,17 @@ describe('Features Module Test Suite', () => {
 
     expect(header).toBeDefined();
     expect(payload).toBeDefined();
-    expect(header.alg).toBe('HS256'); // or the expected algorithm
-    expect(payload.sub).toBe(testContract.userContact.userId);
+    // ES256 with a published key since space#87 (HS256 only in the server's legacy mode).
+    expect(header.alg).toBe('ES256');
+    expect(typeof header.kid).toBe('string');
+    // `sub` is opaque (`urn:space:<organizationId>:<userId>` since space#80): read the userId claim.
+    expect(payload.userId).toBe(testContract.userContact.userId);
+    expect(pricingTokenUserId(payload)).toBe(testContract.userContact.userId);
+
+    const verified = await client.features.verifyPricingToken(token, {
+      organizationId: payload.organizationId,
+    });
+    expect(verified.userId).toBe(testContract.userContact.userId);
   });
 
   it('Should cache pricing tokens and reuse them', async () => {
